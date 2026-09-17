@@ -132,30 +132,75 @@ def run_forever(settings) -> int:
             return 0
 
 
-def probe(settings, url: str) -> int:
-    """指定URLをどう判定するか表示する。セレクタを詰めるときに使う。"""
+def probe_one(settings, url: str) -> int:
+    """指定URLをどう判定するか表示する。セレクタやvariantを詰めるときに使う。"""
     product = next((p for p in settings.products if p.url == url), None)
     if product is None:
         product = config_module.Product(name=url, url=url)
-    html = fetch.get_html(url, user_agent=settings.user_agent,
-                          timeout=settings.timeout_seconds, extra_headers=product.headers)
+
+    _log("")
+    _log("=" * 62)
+    _log(f"URL      : {url}")
+    try:
+        html = fetch.get_html(url, user_agent=settings.user_agent,
+                              timeout=settings.timeout_seconds,
+                              extra_headers=product.headers)
+    except fetch.FetchError as exc:
+        _log(f"取得失敗 : {exc}")
+        return 1
+    _log(f"取得サイズ: {len(html):,} バイト")
+
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html, "lxml")
-    _log(f"URL      : {url}")
-    _log(f"取得サイズ: {len(html):,} バイト")
     if shopify.looks_like_shopify(html):
-        _log("Shopify  : このサイトはShopifyです。在庫APIを使います")
-        _log(f"           → {shopify.check(product, user_agent=settings.user_agent, timeout=settings.timeout_seconds)}")
+        _log("Shopify  : はい。在庫APIを使って判定します")
+        variants = shopify.list_variants(product, user_agent=settings.user_agent,
+                                         timeout=settings.timeout_seconds)
+        if variants:
+            _log("選べる種類（variant に書ける値）:")
+            for v in variants:
+                mark = "○ 在庫あり" if v["available"] else "× 在庫なし"
+                sku = f" / SKU:{v['sku']}" if v["sku"] else ""
+                _log(f"    {mark}  \"{v['title']}\"  {v['price'] or ''}{sku}")
+        else:
+            _log("           在庫APIの取得に失敗しました（HTML判定に切り替わります）")
     else:
-        _log("Shopify  : Shopifyではありません")
-    _log(f"JSON-LD  : {detect.from_jsonld(soup)}")
-    _log(f"microdata: {detect.from_microdata(soup)}")
-    if product.in_stock_selector or product.out_of_stock_selector:
-        _log(f"CSS      : {detect.from_css(soup, product.in_stock_selector, product.out_of_stock_selector)}")
-    _log(f"文言     : {detect.from_keywords(detect.visible_text(soup), product.in_stock_keywords, product.out_of_stock_keywords)}")
-    _log(f"→ 総合判定: {analyze(settings, product)}")
-    return 0
+        _log("Shopify  : いいえ。HTMLの中身から判定します")
+        _log(f"JSON-LD  : {detect.from_jsonld(soup)}")
+        _log(f"microdata: {detect.from_microdata(soup)}")
+        if product.in_stock_selector or product.out_of_stock_selector:
+            _log(f"CSS      : {detect.from_css(soup, product.in_stock_selector, product.out_of_stock_selector)}")
+        _log(f"文言     : {detect.from_keywords(detect.visible_text(soup), product.in_stock_keywords, product.out_of_stock_keywords)}")
+
+    result = analyze(settings, product)
+    label = {"in_stock": "★ 在庫あり（いま買えます）",
+             "out_of_stock": "－ 売り切れ",
+             "unknown": "? 判定できませんでした"}.get(result.status, result.status)
+    _log(f"→ 判定    : {label}")
+    _log(f"→ 根拠    : {result.reason}")
+    _log(f"→ 価格    : {result.price or '取得できず'}")
+    return 0 if result.status != detect.UNKNOWN else 1
+
+
+def probe(settings, url: str | None) -> int:
+    """URL指定があればそれを、無ければ config.yml の全商品を調べる。"""
+    if url:
+        return probe_one(settings, url)
+    if not settings.products:
+        _log("config.yml に商品が登録されていません。URLを直接指定してください。")
+        return 1
+    _log(f"config.yml の {len(settings.products)} 商品を調べます")
+    worst = 0
+    for product in settings.products:
+        worst = max(worst, probe_one(settings, product.url))
+    _log("")
+    _log("=" * 62)
+    if worst == 0:
+        _log("すべて正しく判定できています。このまま監視を始められます。")
+    else:
+        _log("判定できなかった商品があります。この出力を貼って相談してください。")
+    return worst
 
 
 def main(argv=None) -> int:
@@ -167,8 +212,8 @@ def main(argv=None) -> int:
     check_cmd.add_argument("--only", help="商品名またはURLの一部で対象を絞る")
     sub.add_parser("watch", help="間隔をあけてチェックし続ける")
     sub.add_parser("test-mail", help="テストメールを送る")
-    probe_cmd = sub.add_parser("probe", help="URLの判定結果を表示する")
-    probe_cmd.add_argument("url")
+    probe_cmd = sub.add_parser("probe", help="判定結果を表示する（設定の確認用）")
+    probe_cmd.add_argument("url", nargs="?", help="省略すると config.yml の全商品を調べます")
 
     args = parser.parse_args(argv)
     command = args.command or "check"
@@ -192,7 +237,7 @@ def main(argv=None) -> int:
         _log(f"テストメールを送信しました → {', '.join(settings.email.to)}")
         return 0
     if command == "probe":
-        return probe(settings, args.url)
+        return probe(settings, getattr(args, "url", None))
     parser.print_help()
     return 1
 

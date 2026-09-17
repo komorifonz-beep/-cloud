@@ -101,3 +101,29 @@ def check(product, *, user_agent: str, timeout: int = 20) -> Detection | None:
         names = ", ".join(str(v.get("title")) for v in in_stock[:5])
         return Detection(IN_STOCK, f"Shopify在庫API: 購入可能な選択肢 → {names}", price)
     return Detection(OUT_OF_STOCK, f"Shopify在庫API: 全{len(variants)}種すべて在庫なし", price)
+
+
+def list_variants(product, *, user_agent: str, timeout: int = 20) -> list[dict] | None:
+    """選べるサイズ・色の一覧を返す。config.yml の variant に何を書けばよいか調べる用。"""
+    try:
+        payload = get_html(
+            _product_js_url(product.url),
+            user_agent=user_agent,
+            timeout=timeout,
+            extra_headers={"Accept": "application/json", **product.headers},
+            retries=2,
+        )
+        data = json.loads(payload)
+    except (FetchError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict) or "variants" not in data:
+        return None
+    return [
+        {
+            "title": str(v.get("title", "")),
+            "available": bool(v.get("available")),
+            "sku": str(v.get("sku", "")),
+            "price": _format_price(v.get("price")),
+        }
+        for v in data.get("variants") or []
+    ]

@@ -1,0 +1,78 @@
+# 設定が正しいかをブラウザだけで確認するためのワークフロー。
+#
+# 使い方: GitHubのリポジトリページ → 上部の「Actions」タブ
+#         → 左の「1. 動作確認」→ 右の「Run workflow」ボタン
+#
+# PCへのPythonインストールもターミナルも不要です。結果は実行ログと
+# サマリー画面に表示されます。メール送信のテストも同じ画面から行えます。
+
+name: 1. 動作確認
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "調べるURL（空欄なら config.yml の全商品を調べます）"
+        required: false
+        default: ""
+      send_test_mail:
+        description: "テストメールも送る（先に SMTP_PASSWORD の登録が必要）"
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 在庫の判定結果を確認する
+        env:
+          PROBE_URL: ${{ inputs.url }}
+        run: |
+          set -o pipefail
+          if [ -n "$PROBE_URL" ]; then
+            python -m stockwatch probe "$PROBE_URL" 2>&1 | tee probe.log \
+              || echo "PROBE_FAILED=1" >> "$GITHUB_ENV"
+          else
+            python -m stockwatch probe 2>&1 | tee probe.log \
+              || echo "PROBE_FAILED=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: 結果をサマリーに表示する
+        if: always()
+        run: |
+          {
+            echo "## 在庫チェックの動作確認"
+            echo ""
+            echo '```'
+            cat probe.log 2>/dev/null || echo "（出力がありません）"
+            echo '```'
+            echo ""
+            if [ "${PROBE_FAILED:-0}" = "1" ]; then
+              echo "⚠️ 判定できなかった商品があります。上の内容をそのまま貼って相談してください。"
+            else
+              echo "✅ すべて正しく判定できています。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: テストメールを送る
+        if: ${{ inputs.send_test_mail }}
+        env:
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          if [ -z "$SMTP_PASSWORD" ]; then
+            echo "::error::SMTP_PASSWORD が未登録です。Settings → Secrets and variables → Actions で登録してください。"
+            exit 1
+          fi
+          python -m stockwatch test-mail
+          echo "📧 テストメールを送信しました。受信箱を確認してください。" >> "$GITHUB_STEP_SUMMARY"

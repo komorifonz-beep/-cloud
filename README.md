@@ -23,75 +23,122 @@
 
 ---
 
-## 2. セットアップ（15分くらい）
+## 2. セットアップ
 
-### 2-1. 取ってきて動かす準備
+やり方は2通りあります。**Aだけで全部完結します。** PCに何もインストールせず、
+ターミナル（黒い画面）も使いません。ブラウザだけです。
+
+---
+
+### A. ブラウザだけで始める（おすすめ）
+
+#### A-1. Gmailの「アプリパスワード」を取る（5分）
+
+普段のGmailパスワードは使えません（Googleが拒否します）。専用の16桁を発行します。
+
+1. Googleアカウントで**2段階認証を有効**にする（未設定ならこれが先）
+2. https://myaccount.google.com/apppasswords を開く
+3. アプリ名に `stockwatch` と入れて作成
+4. 表示された**16桁**をコピーする（この画面を閉じると二度と見られません）
+
+#### A-2. GitHubに登録する（2分）
+
+1. このリポジトリのページを開く
+2. 上部の **Settings** タブ
+3. 左メニューの **Secrets and variables** → **Actions**
+4. 緑の **New repository secret** ボタン
+5. 入力して **Add secret**
+   - Name: `SMTP_PASSWORD`
+   - Secret: さっきの16桁
+
+> ここに入れた値はGitHubが暗号化して保管し、画面上でも二度と表示されません。
+> ログにも出ない仕組みになっています。
+
+#### A-3. 動作確認する（1分）
+
+1. 上部の **Actions** タブ
+2. 左のリストから **「1. 動作確認」**
+3. 右の **Run workflow** ボタン → 「テストメールも送る」に**チェックを入れて** → 緑の Run workflow
+
+1〜2分で終わります。実行中の行をクリックすると結果が表示されます。
+
+こう出れば成功です。
+
+```
+Shopify  : はい。在庫APIを使って判定します
+選べる種類（variant に書ける値）:
+    × 在庫なし  "M"  ¥12,800
+    × 在庫なし  "L"  ¥12,800
+→ 判定    : － 売り切れ
+```
+
+同時にテストメールも届きます。**ここまで来たら設定完了です。**
+あとは15分おきに自動でチェックし、再入荷したらメールが届きます。
+
+> `判定    : ? 判定できませんでした` と出た場合は、その画面の内容をコピーして
+> 相談してください。サイトに合わせて設定を直します。
+
+#### A-4. 商品を追加・変更する
+
+`config.yml` をブラウザ上で直接編集できます。
+
+1. リポジトリのファイル一覧から **config.yml** をクリック
+2. 右上の**鉛筆アイコン**（Edit this file）
+3. `products:` の下に追記する
+
+```yaml
+  - name: "商品の名前（自分が分かればなんでもOK）"
+    url: "https://qlia.store/products/XXXXX"
+    method: auto
+```
+
+4. 下の **Commit changes** ボタンで保存
+
+サイズを指定したいときは、A-3の「選べる種類」に出た値をそのまま書きます。
+
+```yaml
+  - name: "あの商品 Mサイズだけ"
+    url: "https://qlia.store/products/1s015"
+    method: shopify
+    variant: "M"
+```
+
+同じURLをサイズ違いで何個でも登録できます。それぞれ独立して通知されます。
+
+---
+
+### B. 自分のPCで動かす（反応を速くしたい場合）
+
+GitHubの定期実行は混雑時に5〜15分遅れることがあります。分刻みで売り切れる商品を
+狙うなら、PCで動かしたほうが確実です。**Aと併用もできます。**
+
+Python 3.9以上が必要です。ターミナル（Macは「ターミナル」、Windowsは「PowerShell」）で:
 
 ```bash
 git clone https://github.com/komorifonz-beep/-cloud.git
 cd -cloud
 pip install -r requirements.txt
-cp config.example.yml config.yml
 ```
 
-### 2-2. Gmailの「アプリパスワード」を取る
-
-普段のGmailパスワードは使えません（Googleが拒否します）。専用の16桁パスワードを発行します。
-
-1. Googleアカウントで**2段階認証を有効**にする（未設定なら先にこれ）
-2. https://myaccount.google.com/apppasswords を開く
-3. アプリ名に `stockwatch` と入れて作成
-4. 表示された**16桁**を控える（この画面を閉じると二度と見られません）
-
-控えた16桁を環境変数に入れます。
+アプリパスワードを環境変数に入れます。
 
 ```bash
 # Mac / Linux
-export SMTP_PASSWORD="abcdefghijklmnop"
+export SMTP_PASSWORD="ここに16桁"
 
 # Windows (PowerShell)
-$env:SMTP_PASSWORD="abcdefghijklmnop"
+$env:SMTP_PASSWORD="ここに16桁"
 ```
 
-毎回打つのが面倒なら `.env` ファイルに書いておくか、シェルの設定ファイルに追記してください。
-
-### 2-3. メールが届くか確認する
+確認して、監視を開始します。
 
 ```bash
-python -m stockwatch test-mail
+python -m stockwatch probe        # 設定が正しいか確認
+python -m stockwatch test-mail    # メールが届くか確認
+python -m stockwatch watch        # 監視開始（Ctrl+C で停止）
 ```
 
-受信箱にテストメールが届けば成功です。届かない場合は「よくある詰まりどころ」へ。
-
-### 2-4. 見張りたい商品を登録する
-
-`config.yml` の `products:` を書き換えます。まずは名前とURLだけでOKです。
-
-```yaml
-products:
-  - name: "欲しいスニーカー 27.0cm"
-    url: "https://shop.example.com/products/12345"
-    method: auto
-```
-
-### 2-5. 判定が正しいか確かめる
-
-**ここを飛ばさないでください。** 商品ページの作りはサイトごとに違うので、
-自動判定が効かないことがあります。
-
-```bash
-python -m stockwatch probe "https://shop.example.com/products/12345"
-```
-
-こう表示されれば正しく判定できています。
-
-```
-→ 総合判定: Detection(status='out_of_stock', reason='JSON-LD availability=.../OutOfStock', price='¥12,800')
-```
-
-`unknown` や、明らかに実際と違う結果が出た場合は次の「判定を手で教える」へ。
-
----
+`watch` はPCを閉じると止まります。つけっぱなしにできない場合はAを使ってください。
 
 ## 3. 実行コストについて（Claudeのトークンは消費しません）
 
@@ -168,39 +215,36 @@ HTMLの文言を読むより確実で、JavaScriptで在庫を描画するテー
 
 ---
 
-## 5. 動かす
+## 5. コマンドと設定の調整
 
-### A. 自分のPCで回し続ける（反応が速い）
+### コマンド一覧（PCで動かす場合）
 
-```bash
-python -m stockwatch watch
+| コマンド | 用途 |
+|---|---|
+| `python -m stockwatch probe` | config.yml の全商品の判定結果を表示（設定確認用） |
+| `python -m stockwatch probe "URL"` | 指定URLだけ調べる。登録前の下見にも使える |
+| `python -m stockwatch test-mail` | メール設定の確認 |
+| `python -m stockwatch check` | 1回だけチェック（cronやタスクスケジューラから呼ぶ用） |
+| `python -m stockwatch check --only "商品名"` | 対象を名前で絞ってチェック |
+| `python -m stockwatch watch` | 間隔をあけてチェックし続ける |
+
+### チェック間隔を変える
+
+- **GitHub Actions**: `.github/workflows/stock-watch.yml` の `cron: "*/15 * * * *"` を編集
+  （`*/30` で30分おき。GitHubの最短は5分ですが、混雑時は遅延します）
+- **PCのwatchモード**: `config.yml` の `interval_seconds`（秒数）を編集
+
+### 一時的に止める
+
+商品ごとに `enabled: false` を足すと、その商品だけ見張らなくなります。
+
+```yaml
+  - name: "もう要らない商品"
+    url: "https://qlia.store/products/XXXXX"
+    enabled: false
 ```
 
-`config.yml` の `interval_seconds`（既定600秒＝10分）ごとにチェックします。
-止めるときは `Ctrl + C`。PCを閉じると止まります。
-
-### B. GitHub Actions で無人運用（PCを閉じてOK・おすすめ）
-
-1. `config.yml` をコミットして push する（パスワードは `${SMTP_PASSWORD}` のままにすること）
-2. GitHubリポジトリの **Settings → Secrets and variables → Actions → New repository secret**
-   - Name: `SMTP_PASSWORD`
-   - Secret: 控えた16桁
-3. **Actions** タブ → `stock-watch` → **Run workflow** で手動実行して動作確認
-
-以降は15分おきに自動でチェックします。間隔を変えたいときは
-`.github/workflows/stock-watch.yml` の `cron: "*/15 * * * *"` を編集してください。
-
-> GitHubの定期実行は混雑時に**5〜15分遅れる**ことがあります。分刻みで売り切れる商品には
-> 向きません。その場合は A のPC常駐を使ってください。
-
-### C. 1回だけチェックする（Macの`cron`やタスクスケジューラから呼ぶ用）
-
-```bash
-python -m stockwatch check
-python -m stockwatch check --only "スニーカー"    # 名前で絞る
-```
-
----
+全部止めたいときは、Actionsタブ →「2. 自動チェック」→ 右上の `...` → **Disable workflow**。
 
 ## 6. 自動購入について（正直な話）
 
@@ -277,6 +321,8 @@ API方式で組み直します。
 | メールが来すぎる | `notify_once: true` になっているか確認 |
 | `HTTP 403` で取得できない | アクセスをブロックされている。`interval_seconds` を長くする |
 | Actionsが動かなくなった | 60日リポジトリ放置で定期実行が自動停止する。手動実行すれば再開 |
+| Actionsタブが見当たらない | Settings → Actions → General で Actions が有効か確認 |
+| `SMTP_PASSWORD が未登録` と出る | READMEのA-2を実施。Secret名のスペルも確認（大文字） |
 
 ---
 
