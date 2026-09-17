@@ -39,24 +39,26 @@ defaults:
 # ------------------------------------------------------------------
 
 products:
-  - name: "qlia 1s015"
+  - name: "churukira／くまのプーさん"
     url: "https://qlia.store/products/1s015"
     method: auto
 
-  - name: "qlia 1s019"
+  - name: "churukira／ベイマックス ハート"
     url: "https://qlia.store/products/1s019"
     method: auto
 
-  - name: "qlia 9s764"
+  - name: "ディズニープリンセス"
     url: "https://qlia.store/products/9s764"
     method: auto
 
-  - name: "qlia 0ss19"
+  - name: "パウ・パトロール／バッジ"
     url: "https://qlia.store/products/0ss19"
     method: auto
 
-# 同じ商品をサイズ違いで複数見張ることもできます（それぞれ別に通知されます）
-#  - name: "qlia 1s015 Mサイズ"
-#    url: "https://qlia.store/products/1s015"
+# この4商品はサイズ・色の選択肢がない（Default Title の1種類のみ）ため、
+# variant の指定は不要です。選択肢がある商品を追加する場合は、
+# 「1. 動作確認」の出力に並ぶ値をそのまま variant に書いてください。
+#  - name: "選択肢がある商品 Mサイズ"
+#    url: "https://qlia.store/products/XXXXX"
 #    method: shopify
 #    variant: "M"
