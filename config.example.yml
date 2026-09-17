@@ -1,0 +1,86 @@
+# ------------------------------------------------------------------
+# stockwatch 設定ファイル
+# このファイルを config.yml にコピーして、自分の内容に書き換えてください。
+#   cp config.example.yml config.yml
+# パスワードは ${環境変数名} と書くと環境変数から読み込みます。
+# config.yml は .gitignore 済みですが、パスワード直書きは避けてください。
+# ------------------------------------------------------------------
+
+email:
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  use_tls: true
+  user: komori.fonz@gmail.com
+  password: ${SMTP_PASSWORD}      # Gmailの「アプリパスワード」16桁。README参照
+  sender: komori.fonz@gmail.com
+  to:
+    - komori.fonz@gmail.com       # 複数書けます
+
+defaults:
+  interval_seconds: 600           # watch モードのチェック間隔(秒)。短くしすぎない
+  timeout_seconds: 20
+  confirm_recheck: true           # 在庫ありを検知したら20秒後にもう一度確認する(誤報防止)
+  recheck_delay_seconds: 20
+  jitter_seconds: 30              # アクセス時刻をばらけさせる
+  state_path: state.json
+
+products:
+  # ---- 例1: 何も設定しないパターン ----------------------------------
+  # 構造化データ(JSON-LD)や文言から自動で判定します。まずはこれで試して、
+  # `python -m stockwatch probe <URL>` で判定が合っているか確認してください。
+  - name: "サンプル商品A"
+    url: "https://example.com/products/sample-a"
+    method: auto
+
+  # ---- 例2: セレクタを指定して精度を上げるパターン --------------------
+  # ブラウザで商品ページを開き、「カートに入れる」ボタンを右クリック →
+  # 「検証」でHTMLを見て、class名やid名を in_stock_selector に書きます。
+  - name: "サンプル商品B（セレクタ指定）"
+    url: "https://example.com/products/sample-b"
+    method: css
+    in_stock_selector: "button.add-to-cart"          # これが押せる状態なら在庫あり
+    out_of_stock_selector: ".sold-out-label"         # これがあれば売り切れ
+    price_selector: ".product-price"
+    notify_once: true                                # 在庫が続く間は1回だけ通知
+
+  # ---- 例3: 文言で判定するパターン -----------------------------------
+  - name: "サンプル商品C（文言指定）"
+    url: "https://example.com/products/sample-c"
+    method: keyword
+    out_of_stock_keywords: ["入荷次第出荷", "再入荷をお知らせ"]
+    in_stock_keywords: ["カートに入れる"]
+    enabled: true
+
+  # ---- 例4: 再入荷したらカート投入まで自動でやるパターン ----------------
+  # 注文の確定だけは自分で押します。理由は README の「自動購入について」参照。
+  - name: "サンプル商品D（カート投入まで自動）"
+    url: "https://example.com/products/sample-d"
+    method: auto
+    cart_assist: true
+    cart_profile: sample_shop
+    enabled: false                                   # 使うときに true にする
+
+# ------------------------------------------------------------------
+# カート投入の手順（サイトごとに1つ作る）
+# ステップで使えるもの:
+#   - goto: URL / fill: セレクタ + value: 値 / click: セレクタ
+#   - select: セレクタ + value: 値 / press: キー名
+#   - wait_for: セレクタ / wait_ms: ミリ秒
+# ------------------------------------------------------------------
+cart_profiles:
+  sample_shop:
+    login_url: "https://example.com/login"
+    login_steps:
+      - fill: "#email"
+        value: ${SHOP_USER}
+      - fill: "#password"
+        value: ${SHOP_PASSWORD}
+      - click: "button[type=submit]"
+      - wait_for: ".account-menu"
+    add_to_cart_steps:
+      - select: "select#size"
+        value: "27.0"
+      - click: "button.add-to-cart"
+      - wait_for: ".cart-count"
+    cart_url: "https://example.com/cart"
+    storage_state: browser-state.json    # ログインCookieの保存先(gitに入れないこと)

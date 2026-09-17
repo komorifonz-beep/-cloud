@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 秘密情報・ローカル生成物はコミットしない
+.env
+browser-state.json
+screenshots/
+config.local.yml
+
+# config.yml と state.json は GitHub Actions で使うためコミット対象にしている。
+# パスワードは必ず ${環境変数名} 形式で書き、直書きしないこと。

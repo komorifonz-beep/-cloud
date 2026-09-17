@@ -1,0 +1,55 @@
+# 自分のPCを起動しっぱなしにしなくても、GitHub が定期的にチェックしてくれる。
+#
+# 【事前準備】
+#  1. config.yml をこのリポジトリにコミットする（パスワードは書かない）
+#  2. リポジトリの Settings → Secrets and variables → Actions → New repository secret で
+#     SMTP_PASSWORD に Gmail のアプリパスワード(16桁)を登録する
+#
+# 【注意】GitHub の定期実行は混雑時に5〜15分ほど遅れることがあります。
+#        分刻みの争奪戦には向きません。その場合は自分のPCで watch モードを使ってください。
+
+name: stock-watch
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # 15分ごと（UTC基準。間隔なので時差は関係なし）
+  workflow_dispatch:          # 手動実行用のボタンも出る
+
+permissions:
+  contents: write             # state.json を書き戻すために必要
+
+concurrency:
+  group: stock-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 在庫をチェックする
+        env:
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: python -m stockwatch check
+
+      - name: 状態を保存する
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name "stock-watch"
+            git config user.email "actions@github.com"
+            git add state.json
+            git commit -m "chore: 在庫チェック結果を更新"
+            git push
+          else
+            echo "状態に変化なし"
+          fi
