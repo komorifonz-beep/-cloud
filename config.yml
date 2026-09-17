@@ -1,0 +1,62 @@
+# ------------------------------------------------------------------
+# stockwatch 設定ファイル（実運用用）
+#
+# パスワードは書きません。${SMTP_PASSWORD} は実行時に環境変数から読み込みます。
+#   ローカル : export SMTP_PASSWORD="アプリパスワード16桁"
+#   Actions  : Settings → Secrets and variables → Actions に SMTP_PASSWORD を登録
+# ------------------------------------------------------------------
+
+email:
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  use_tls: true
+  user: komori.fonz@gmail.com
+  password: ${SMTP_PASSWORD}
+  sender: komori.fonz@gmail.com
+  to:
+    - komori.fonz@gmail.com
+
+defaults:
+  interval_seconds: 600        # watchモードのチェック間隔（10分）
+  timeout_seconds: 20
+  confirm_recheck: true        # 在庫ありを検知したら20秒後に再確認してから送る
+  recheck_delay_seconds: 20
+  jitter_seconds: 30
+  state_path: state.json
+
+# ------------------------------------------------------------------
+# qlia.store の商品
+#
+# URLの形（/products/<商品コード>）から Shopify と判断しています。
+# method: auto にしておくと、ページを1回読んで Shopify だと分かった時点で
+# 在庫API（商品URL + .js）に自動的に切り替わります。HTMLの文言を読むより確実で、
+# サイズ/色ごとの在庫まで正確に分かります。
+#
+# 特定のサイズ・色だけを見張りたい場合は variant を足してください。
+#   variant: "M"      /  variant: "27.0"  /  variant: "ブラック"
+# 何を書けばいいか分からないときは probe を実行すると選択肢が一覧で出ます。
+#   python -m stockwatch probe "https://qlia.store/products/1s015"
+# ------------------------------------------------------------------
+
+products:
+  - name: "qlia 1s015"
+    url: "https://qlia.store/products/1s015"
+    method: auto
+
+  - name: "qlia 1s019"
+    url: "https://qlia.store/products/1s019"
+    method: auto
+
+  - name: "qlia 9s764"
+    url: "https://qlia.store/products/9s764"
+    method: auto
+
+  - name: "qlia 0ss19"
+    url: "https://qlia.store/products/0ss19"
+    method: auto
+
+# 同じ商品をサイズ違いで複数見張ることもできます（それぞれ別に通知されます）
+#  - name: "qlia 1s015 Mサイズ"
+#    url: "https://qlia.store/products/1s015"
+#    method: shopify
+#    variant: "M"

@@ -15,7 +15,7 @@ import time
 import traceback
 
 from . import config as config_module
-from . import detect, fetch, notify
+from . import detect, fetch, notify, shopify
 from .state import State
 
 
@@ -23,42 +23,54 @@ def _log(message: str) -> None:
     print(message, flush=True)
 
 
-def check_product(settings, product, state: State) -> bool:
-    """1商品をチェックし、通知したら True を返す。"""
+def analyze(settings, product) -> detect.Detection:
+    """1商品の在庫状態を判定する。Shopifyなら在庫APIを優先して使う。"""
+    if product.method == "shopify":
+        result = shopify.check(product, user_agent=settings.user_agent,
+                               timeout=settings.timeout_seconds)
+        if result is not None:
+            return result
+        _log(f"    (Shopify在庫APIが使えないためHTMLで判定します: {product.name})")
+
     html = fetch.get_html(
         product.url,
         user_agent=settings.user_agent,
         timeout=settings.timeout_seconds,
         extra_headers=product.headers,
     )
-    result = detect.detect(html, product)
+    # auto かつ Shopify のストアなら、HTMLより確実な在庫APIに切り替える。
+    if product.method in ("auto", "shopify") and shopify.looks_like_shopify(html):
+        result = shopify.check(product, user_agent=settings.user_agent,
+                               timeout=settings.timeout_seconds)
+        if result is not None:
+            return result
+    return detect.detect(html, product)
+
+
+def check_product(settings, product, state: State) -> bool:
+    """1商品をチェックし、通知したら True を返す。"""
+    result = analyze(settings, product)
 
     # 一瞬だけ在庫ありに見えるケース(キャッシュ・描画途中)を弾くため、もう一度確認する。
     if result.in_stock and settings.confirm_recheck:
         time.sleep(settings.recheck_delay_seconds)
-        recheck_html = fetch.get_html(
-            product.url,
-            user_agent=settings.user_agent,
-            timeout=settings.timeout_seconds,
-            extra_headers=product.headers,
-        )
-        recheck = detect.detect(recheck_html, product)
+        recheck = analyze(settings, product)
         if not recheck.in_stock:
             _log(f"  △ {product.name}: 再確認で在庫なしに戻ったため通知しません")
-            state.record(product.url, recheck.status, reason=recheck.reason, price=recheck.price)
+            state.record(product.key, recheck.status, reason=recheck.reason, price=recheck.price)
             return False
         result = recheck
 
-    previous = state.last_status(product.url)
+    previous = state.last_status(product.key)
     _log(f"  - {product.name}: {result.status} ({result.reason})")
 
     if result.status == detect.UNKNOWN:
-        state.record(product.url, result.status, reason=result.reason, price=result.price)
+        state.record(product.key, result.status, reason=result.reason, price=result.price)
         return False
 
     already_notified = product.notify_once and previous == detect.IN_STOCK
     if not result.in_stock or already_notified:
-        state.record(product.url, result.status, reason=result.reason, price=result.price)
+        state.record(product.key, result.status, reason=result.reason, price=result.price)
         return False
 
     cart_note, screenshot = "", None
@@ -73,7 +85,7 @@ def check_product(settings, product, state: State) -> bool:
                                    cart_note=cart_note, screenshot=screenshot)
     notify.send(settings.email, message)
     _log(f"  ★ {product.name}: 再入荷を通知しました → {', '.join(settings.email.to)}")
-    state.record(product.url, result.status, notified=True,
+    state.record(product.key, result.status, notified=True,
                  reason=result.reason, price=result.price)
     return True
 
@@ -132,12 +144,17 @@ def probe(settings, url: str) -> int:
     soup = BeautifulSoup(html, "lxml")
     _log(f"URL      : {url}")
     _log(f"取得サイズ: {len(html):,} バイト")
+    if shopify.looks_like_shopify(html):
+        _log("Shopify  : このサイトはShopifyです。在庫APIを使います")
+        _log(f"           → {shopify.check(product, user_agent=settings.user_agent, timeout=settings.timeout_seconds)}")
+    else:
+        _log("Shopify  : Shopifyではありません")
     _log(f"JSON-LD  : {detect.from_jsonld(soup)}")
     _log(f"microdata: {detect.from_microdata(soup)}")
     if product.in_stock_selector or product.out_of_stock_selector:
         _log(f"CSS      : {detect.from_css(soup, product.in_stock_selector, product.out_of_stock_selector)}")
     _log(f"文言     : {detect.from_keywords(detect.visible_text(soup), product.in_stock_keywords, product.out_of_stock_keywords)}")
-    _log(f"→ 総合判定: {detect.detect(html, product)}")
+    _log(f"→ 総合判定: {analyze(settings, product)}")
     return 0
 
 

@@ -48,7 +48,8 @@ class EmailConfig:
 class Product:
     name: str
     url: str
-    method: str = "auto"                 # auto | jsonld | css | keyword
+    method: str = "auto"                 # auto | shopify | jsonld | css | keyword
+    variant: str = ""                    # サイズ・色など (Shopifyのみ。例: "M", "27.0")
     in_stock_selector: str = ""          # 在庫ありのときだけ現れる要素 (例: button.add-cart)
     out_of_stock_selector: str = ""      # 売り切れのときだけ現れる要素
     in_stock_keywords: list[str] = field(default_factory=list)
@@ -63,6 +64,15 @@ class Product:
     def __post_init__(self) -> None:
         self.in_stock_keywords = self.in_stock_keywords or list(DEFAULT_IN_KEYWORDS)
         self.out_of_stock_keywords = self.out_of_stock_keywords or list(DEFAULT_OUT_KEYWORDS)
+
+    @property
+    def key(self) -> str:
+        """状態を記録するときの識別子。
+
+        同じURLをサイズ違いで複数監視できるよう、variant まで含めて区別する。
+        URLだけで区別すると、Mサイズの通知でLサイズが通知済み扱いになってしまう。
+        """
+        return f"{self.url}#variant={self.variant}" if self.variant else self.url
 
 
 @dataclass
@@ -121,6 +131,7 @@ def load(path: str | Path = "config.yml") -> Settings:
                 name=item.get("name") or item["url"],
                 url=item["url"],
                 method=item.get("method", "auto"),
+                variant=str(item.get("variant", "") or ""),
                 in_stock_selector=item.get("in_stock_selector", ""),
                 out_of_stock_selector=item.get("out_of_stock_selector", ""),
                 in_stock_keywords=item.get("in_stock_keywords") or [],
