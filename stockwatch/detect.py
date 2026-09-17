@@ -31,6 +31,7 @@ class Detection:
     status: str
     reason: str          # どうやってその結論に至ったか (ログとメールに出す)
     price: str | None = None
+    title: str | None = None   # サイトから取得した実際の商品名
 
     @property
     def in_stock(self) -> bool:

@@ -19,14 +19,18 @@ def build_message(email_cfg, product, detection, *, cart_note: str = "",
                   screenshot: str | None = None) -> EmailMessage:
     when = _now_jst()
     price = detection.price or "不明"
+    # サイトから取れた実際の商品名を優先する。無ければ config.yml の name を使う。
+    display_name = detection.title or product.name
+    if detection.title and product.variant:
+        display_name = f"{detection.title}（{product.variant}）"
 
     message = EmailMessage()
-    message["Subject"] = f"【再入荷】{product.name}"
+    message["Subject"] = f"【再入荷】{display_name}"
     message["From"] = email_cfg.sender
     message["To"] = ", ".join(email_cfg.to)
 
     plain = [
-        f"{product.name} が購入できる状態になりました。",
+        f"{display_name} が購入できる状態になりました。",
         "",
         f"価格　: {price}",
         f"確認　: {when} (JST)",
@@ -39,7 +43,7 @@ def build_message(email_cfg, product, detection, *, cart_note: str = "",
     plain += ["", "-- stockwatch"]
     message.set_content("\n".join(plain))
 
-    safe_name = html.escape(product.name)
+    safe_name = html.escape(display_name)
     safe_url = html.escape(product.url, quote=True)
     cart_block = (
         f'<p style="margin:16px 0 0;color:#444;">カート: {html.escape(cart_note)}</p>'

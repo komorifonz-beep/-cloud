@@ -86,21 +86,24 @@ def check(product, *, user_agent: str, timeout: int = 20) -> Detection | None:
                 f"指定した '{product.variant}' が見つからない"
                 f"（存在する選択肢: {', '.join(available) or 'なし'}）",
                 price,
+                title,
             )
         status = IN_STOCK if variant.get("available") else OUT_OF_STOCK
         return Detection(
             status,
-            f"Shopify在庫API: {title} / {variant.get('title')} → "
+            f"Shopify在庫API: {variant.get('title')} → "
             f"{'在庫あり' if status == IN_STOCK else '在庫なし'}",
             _format_price(variant.get("price")) or price,
+            title,
         )
 
     # 指定なしなら、どれか1つでも買えれば在庫ありとする
     in_stock = [v for v in variants if v.get("available")]
     if data.get("available") and in_stock:
         names = ", ".join(str(v.get("title")) for v in in_stock[:5])
-        return Detection(IN_STOCK, f"Shopify在庫API: 購入可能な選択肢 → {names}", price)
-    return Detection(OUT_OF_STOCK, f"Shopify在庫API: 全{len(variants)}種すべて在庫なし", price)
+        return Detection(IN_STOCK, f"Shopify在庫API: 購入可能な選択肢 → {names}", price, title)
+    return Detection(OUT_OF_STOCK, f"Shopify在庫API: 全{len(variants)}種すべて在庫なし",
+                     price, title)
 
 
 def list_variants(product, *, user_agent: str, timeout: int = 20) -> list[dict] | None:

@@ -11,7 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from stockwatch import shopify                    # noqa: E402
 from stockwatch.config import Product             # noqa: E402
+from stockwatch.config import EmailConfig             # noqa: E402
 from stockwatch.detect import IN_STOCK, OUT_OF_STOCK  # noqa: E402
+from stockwatch.notify import build_message           # noqa: E402
 
 UA = "stockwatch-test"
 
@@ -118,6 +120,38 @@ def test_state_key_separates_variants():
     assert size_m.key != size_l.key
     assert base.key != size_m.key
     assert base.key == BASE
+
+
+def test_detection_carries_product_title():
+    _PAYLOAD["data"] = M_BACK
+    assert shopify.check(Product("設定上の名前", BASE), user_agent=UA).title == "テストTシャツ"
+
+
+def test_email_uses_real_product_title():
+    # config.yml の名前ではなく、サイトから取れた実際の商品名を件名に使う
+    _PAYLOAD["data"] = M_BACK
+    product = Product("qlia 1s015", BASE)
+    result = shopify.check(product, user_agent=UA)
+    cfg = EmailConfig(user="a@e.com", sender="a@e.com", to=["b@e.com"])
+    assert build_message(cfg, product, result)["Subject"] == "【再入荷】テストTシャツ"
+
+
+def test_email_title_includes_variant():
+    _PAYLOAD["data"] = M_BACK
+    product = Product("qlia 1s015", BASE, variant="M")
+    result = shopify.check(product, user_agent=UA)
+    cfg = EmailConfig(user="a@e.com", sender="a@e.com", to=["b@e.com"])
+    assert build_message(cfg, product, result)["Subject"] == "【再入荷】テストTシャツ（M）"
+
+
+def test_email_falls_back_to_config_name():
+    # Shopifyでないサイトなど、商品名が取れない場合は config.yml の名前を使う
+    from stockwatch.detect import Detection
+
+    product = Product("自分でつけた名前", "https://x.com/p/1")
+    cfg = EmailConfig(user="a@e.com", sender="a@e.com", to=["b@e.com"])
+    message = build_message(cfg, product, Detection(IN_STOCK, "テスト"))
+    assert message["Subject"] == "【再入荷】自分でつけた名前"
 
 
 def _run_all():

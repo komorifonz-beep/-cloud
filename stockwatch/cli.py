@@ -174,6 +174,8 @@ def probe_one(settings, url: str) -> int:
         _log(f"文言     : {detect.from_keywords(detect.visible_text(soup), product.in_stock_keywords, product.out_of_stock_keywords)}")
 
     result = analyze(settings, product)
+    if result.title:
+        _log(f"商品名   : {result.title}")
     label = {"in_stock": "★ 在庫あり（いま買えます）",
              "out_of_stock": "－ 売り切れ",
              "unknown": "? 判定できませんでした"}.get(result.status, result.status)
