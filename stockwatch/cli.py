@@ -110,7 +110,10 @@ def run_once(settings, only: str | None = None) -> int:
         # サイトに連続アクセスしないよう少し待つ
         if index < len(targets) - 1:
             time.sleep(random.uniform(1.0, 3.0))
-    state.save()
+    if state.save():
+        _log("在庫状態に変化があったため state.json を更新しました")
+    else:
+        _log("在庫状態に変化なし（state.json は変更しません）")
     return 0 if failures == 0 else 2
 
 

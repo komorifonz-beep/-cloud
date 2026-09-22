@@ -84,6 +84,58 @@ def test_state_roundtrip(tmp_path=None):
         assert State(path).last_status("http://x") == IN_STOCK
 
 
+def test_state_skips_write_when_nothing_changed():
+    """在庫状態が同じなら state.json に触らない（無意味なコミットを防ぐ）。"""
+    import tempfile
+    import time
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "state.json"
+
+        first = State(path)
+        first.record("http://x", OUT_OF_STOCK, reason="売り切れ")
+        assert first.save() is True                  # 初回は保存される
+        stamp = path.stat().st_mtime_ns
+
+        time.sleep(0.01)
+        second = State(path)
+        second.record("http://x", OUT_OF_STOCK, reason="売り切れ")   # 時刻だけ変わる
+        assert second.has_changes() is False
+        assert second.save() is False                # 書き換えない
+        assert path.stat().st_mtime_ns == stamp      # ファイルが実際に無傷
+
+
+def test_state_writes_when_status_changes():
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "state.json"
+        first = State(path)
+        first.record("http://x", OUT_OF_STOCK, reason="売り切れ")
+        first.save()
+
+        second = State(path)
+        second.record("http://x", IN_STOCK, notified=True, reason="在庫あり")
+        assert second.has_changes() is True
+        assert second.save() is True
+        assert State(path).last_status("http://x") == IN_STOCK
+
+
+def test_state_writes_when_new_product_added():
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "state.json"
+        first = State(path)
+        first.record("http://x", OUT_OF_STOCK)
+        first.save()
+
+        second = State(path)
+        second.record("http://x", OUT_OF_STOCK)
+        second.record("http://y", OUT_OF_STOCK)      # 商品が増えた
+        assert second.save() is True
+
+
 def test_build_message_has_subject_and_link():
     product = Product("スニーカー<script>", "https://shop.example/p/1")
     result = detect(load("jsonld_in.html"), product)
